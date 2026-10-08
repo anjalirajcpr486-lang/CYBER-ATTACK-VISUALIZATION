@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Cyber Threat Map (simulated)</title>
+<style>
+  /* ── CSS Variables ──────────────────────────────────────────── */
+  :root {
+    --bg:        #050b14;
+    --panel:     #0b1626;
+    --border:    #16304d;
+    --accent:    #00e5ff;
+    --text:      #c8d8e8;
+    --muted:     #4a6480;
+    --font:      'Courier New', Courier, monospace;
+
+    --ddos:      #ff3b5c;
+    --malware:   #ffb300;
+    --phishing:  #00e5ff;
+    --ransomware:#c471ff;
+    --brute:     #4dff88;
+  }
+
+  /* ── Reset / Base ───────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+  }
+  .stat-item { text-align: right; }
+  .stat-label { color: var(--muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+  .stat-value { color: var(--accent); font-size: 20px; font-weight: bold; }
+
+  /* ── Main layout ─────────────────────────────────────────────── */
+  main {
+    display: flex;
+    flex: 1;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Map area ─────────────────────────────────────────────────── */
+  #map-wrap {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+    position: relative;
+  }
+  canvas#map {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ── Sidebar ──────────────────────────────────────────────────── */
+  aside {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .panel {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+  .panel-title {
+    color: var(--accent);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* Controls */
+  #btn-pause {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 5px 14px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background .15s;
+    margin-bottom: 12px;
+    display: block;
+    width: 100%;
+  }
+  #btn-pause:hover { background: rgba(0,229,255,.1); }
+
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  .slider-row label { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+  #speed-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  #speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  #speed-val { color: var(--accent); font-size: 12px; width: 16px; text-align: right; }
+
+  /* Type filter chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 3px 9px;
+    border-radius: 3px;
+    font-family: var(--font);
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: opacity .15s;
+    user-select: none;
+  }
+  .chip.off { opacity: .28; }
+
+  /* Bar chart */
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .bar-city { width: 80px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; background: var(--border); height: 8px; border-radius: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .5s ease; }
+  .bar-count { font-size: 11px; color: var(--accent); width: 28px; text-align: right; }
+
+  /* Live feed */
+  #feed-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow: hidden;
+  }
+  #feed-list li {
+    font-size: 11px;
+    padding: 4px 6px;
+    border-left: 3px solid;
+    background: rgba(255,255,255,.03);
+    animation: slideIn .25s ease;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Responsive ───────────────────────────────────────────────── */
+  @media (max-width: 800px) {
+    main { flex-direction: column; overflow: auto; }
+    aside { width: 100%; border-left: none; border-top: 1px solid var(--border); }
+    #map-wrap { min-height: 55vw; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header>
+  <h1>&#9632; Live Cyber Threat Map <span style="color:var(--muted);font-size:11px">(simulated)</span></h1>
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-label">Total Attacks</div>
+      <div class="stat-value" id="total-counter">0</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Attacks / min</div>
+      <div class="stat-value" id="apm-counter">0</div>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────── -->
+<main>
+  <div id="map-wrap">
+    <canvas id="map"></canvas>
+  </div>
+
+  <aside>
+    <!-- Controls -->
+    <div class="panel">
+      <div class="panel-title">Controls</div>
+      <button id="btn-pause">⏸ PAUSE</button>
+      <div class="slider-row">
+        <label>SPEED</label>
+        <input type="range" id="speed-slider" min="1" max="10" value="5">
+        <span id="speed-val">5</span>
+      </div>
+    </div>
+
+    <!-- Type filters -->
+    <div class="panel">
+      <div class="panel-title">Attack Types</div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <!-- Top targets bar chart -->
+    <div class="panel">
+      <div class="panel-title">Top Targets</div>
+      <div id="top-targets"></div>
+    </div>
+
+    <!-- Live feed -->
+    <div class="panel">
+      <div class="panel-title">Live Feed</div>
+      <ul id="feed-list"></ul>
+    </div>
+  </aside>
+</main>
+
+<script>
+/* ================================================================
+   LIVE CYBER THREAT MAP — all logic in one self-contained script
+   ================================================================ */
+
+/* ── 1. DATA DEFINITIONS ────────────────────────────────────────
+   Edit these arrays to add / remove cities or attack types.
+   lat/lon use standard geographic coordinates.
+   ──────────────────────────────────────────────────────────────── */
+const CITIES = [
+  { name: 'New York',      lat:  40.71, lon: -74.01 },
+  { name: 'San Francisco', lat:  37.77, lon:-122.42 },
+  { name: 'Sao Paulo',     lat: -23.55, lon: -46.63 },
+  { name: 'London',        lat:  51.51, lon:  -0.13 },
+  { name: 'Frankfurt',     lat:  50.11, lon:   8.68 },
+  { name: 'Moscow',        lat:  55.75, lon:  37.62 },
+  { name: 'Lagos',         lat:   6.52, lon:   3.38 },
+  { name: 'Cairo',         lat:  30.04, lon:  31.24 },
+  { name: 'Dubai',         lat:  25.20, lon:  55.27 },
+  { name: 'Mumbai',        lat:  19.08, lon:  72.88 },
+  { name: 'Kolkata',       lat:  22.57, lon:  88.36 },
+  { name: 'Singapore',     lat:   1.35, lon: 103.82 },
+  { name: 'Beijing',       lat:  39.91, lon: 116.39 },
+  { name: 'Tokyo',         lat:  35.68, lon: 139.69 },
+  { name: 'Sydney',        lat: -33.87, lon: 151.21 },
+  { name: 'Johannesburg',  lat: -26.20, lon:  28.04 },
+];
+
+const ATTACK_TYPES = [
+  { name: 'DDoS',       color: '#ff3b5c' },
+  { name: 'Malware',    color: '#ffb300' },
+  { name: 'Phishing',   color: '#00e5ff' },
+  { name: 'Ransomware', color: '#c471ff' },
+  { name: 'Brute Force',color: '#4dff88' },
+];
+
+/* ── 2. STATE ────────────────────────────────────────────────────*/
+let paused        = false;
+let speedLevel    = 5;          // 1-10 → controls spawn interval
+let totalAttacks  = 0;
+const timestamps  = [];         // rolling 60-sec window for APM
+const activeArcs  = [];         // currently animating arcs
+const ripples     = [];         // currently animating ripples
+const hitCounts   = {};         // city hit counts for bar chart
+const enabledTypes= new Set(ATTACK_TYPES.map(t => t.name)); // filter state
+
+CITIES.forEach(c => { hitCounts[c.name] = 0; });
+
+/* ── 3. CANVAS SETUP ─────────────────────────────────────────────*/
+const canvas = document.getElementById('map');
+const ctx    = canvas.getContext('2d');
+let   dpr    = window.devicePixelRatio || 1;
+let   cw, ch; // logical (CSS) dimensions
+
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  const wrap = canvas.parentElement;
+  cw = wrap.clientWidth;
+  ch = wrap.clientHeight;
+  canvas.width  = cw * dpr;
+  canvas.height = ch * dpr;
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+/* ── 4. MAP PROJECTION (equirectangular) ─────────────────────────
+   Maps (lon, lat) → canvas (x, y).
+   Longitude: -180 → 0,  +180 → cw
+   Latitude:   +90 → 0,   -90 → ch
+   ──────────────────────────────────────────────────────────────── */
+function project(lon, lat) {
+  const x = (lon + 180) / 360 * cw;
+  const y = (90  - lat) / 180 * ch;
+  return { x, y };
+}
+
+/* ── 5. DRAW MAP ─────────────────────────────────────────────────*/
+function drawMap() {
+  ctx.clearRect(0, 0, cw, ch);
+
+  // background
+  ctx.fillStyle = '#050b14';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // latitude / longitude grid every 30°
+  ctx.strokeStyle = 'rgba(22,48,77,0.8)';
+  ctx.lineWidth   = 0.5;
+  ctx.setLineDash([3, 5]);
+
+  for (let lon = -180; lon <= 180; lon += 30) {
+    const { x } = project(lon, 0);
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, ch);
+    ctx.stroke();
+  }
+  for (let lat = -90; lat <= 90; lat += 30) {
+    const { y } = project(0, lat);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(cw, y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // equator and prime meridian slightly brighter
+  ctx.strokeStyle = 'rgba(22,48,77,1.4)';
+  ctx.lineWidth   = 0.8;
+  const eq = project(0,  0);
+  const pm = project(0, 90);
+  ctx.beginPath(); ctx.moveTo(0, eq.y); ctx.lineTo(cw, eq.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pm.x, 0); ctx.lineTo(pm.x, ch); ctx.stroke();
+
+  // city dots + labels
+  CITIES.forEach(city => {
+    const { x, y } = project(city.lon, city.lat);
+
+    // outer glow ring
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,229,255,0.25)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // dot
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#00e5ff';
+    ctx.fill();
+
+    // label
+    ctx.font      = `${Math.max(9, cw * 0.012)}px 'Courier New', monospace`;
+    ctx.fillStyle = 'rgba(200,216,232,0.85)';
+    ctx.fillText(city.name, x + 6, y + 3);
+  });
+}
+
+/* ── 6. ARC ANIMATION HELPERS ────────────────────────────────────*/
+
+/** Quadratic Bezier point at t ∈ [0,1] */
+function bezier(p0, p1, p2, t) {
+  const mt = 1 - t;
+  return {
+    x: mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x,
+    y: mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y,
+  };
+}
+
+/** Compute a control point that curves the arc away from the map centre */
+function controlPoint(p0, p2) {
+  const mx = (p0.x + p2.x) / 2;
+  const my = (p0.y + p2.y) / 2;
+  // push perpendicular to mid-point, scaled by chord length
+  const dx = p2.x - p0.x;
+  const dy = p2.y - p0.y;
+  const len = Math.hypot(dx, dy);
+  const curve = len * 0.35;
+  // perpendicular unit vector
+  const nx = -dy / len;
+  const ny =  dx / len;
+  return { x: mx + nx * curve, y: my + ny * curve };
+}
+
+/** Draw a single arc with glowing trail */
+function drawArc(arc) {
+  const { src, dst, cp, progress, color, duration } = arc;
+
+  // tail starts TAIL_FRAC behind the head
+  const TAIL_FRAC = 0.28;
+  const tailT = Math.max(0, progress - TAIL_FRAC);
+  const headT = progress;
+
+  const STEPS = 32;
+  ctx.lineWidth   = 1.5;
+  ctx.shadowBlur  = 12;
+  ctx.shadowColor = color;
+
+  ctx.beginPath();
+  for (let i = 0; i <= STEPS; i++) {
+    const t   = tailT + (headT - tailT) * (i / STEPS);
+    const pt  = bezier(src, cp, dst, t);
+    const alpha = i / STEPS;
+    ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2,'0');
+    if (i === 0) ctx.moveTo(pt.x, pt.y);
+    else         ctx.lineTo(pt.x, pt.y);
+  }
+  ctx.stroke();
+
+  // head dot
+  const head = bezier(src, cp, dst, headT);
+  ctx.beginPath();
+  ctx.arc(head.x, head.y, 3, 0, Math.PI * 2);
+  ctx.fillStyle   = '#ffffff';
+  ctx.shadowBlur  = 16;
+  ctx.shadowColor = color;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+}
+
+/** Draw a ripple at a target city */
+function drawRipple(r) {
+  const alpha = 1 - r.progress;
+  ctx.beginPath();
+  ctx.arc(r.x, r.y, r.progress * 28, 0, Math.PI * 2);
+  ctx.strokeStyle = r.color + Math.round(alpha * 200).toString(16).padStart(2,'0');
+  ctx.lineWidth   = 1.5;
+  ctx.shadowBlur  = 10;
+  ctx.shadowColor = r.color;
+  ctx.stroke();
+  ctx.shadowBlur  = 0;
+}
+
+/* ── 7. SPAWN LOGIC ──────────────────────────────────────────────
+   This function is the single injection point for new attacks.
+   Replace its body with a WebSocket/API listener to go live.
+   ──────────────────────────────────────────────────────────────── */
+function spawn() {
+  // pick random attack type from enabled types
+  const available = ATTACK_TYPES.filter(t => enabledTypes.has(t.name));
+  if (available.length === 0) return;
+  const type = available[Math.floor(Math.random() * available.length)];
+
+  // pick two distinct cities
+  let srcIdx = Math.floor(Math.random() * CITIES.length);
+  let dstIdx;
+  do { dstIdx = Math.floor(Math.random() * CITIES.length); }
+  while (dstIdx === srcIdx);
+
+  const srcCity = CITIES[srcIdx];
+  const dstCity = CITIES[dstIdx];
+
+  const src = project(srcCity.lon, srcCity.lat);
+  const dst = project(dstCity.lon, dstCity.lat);
+  const cp  = controlPoint(src, dst);
+
+  const duration = 1400 + Math.random() * 1000; // ms
+
+  activeArcs.push({
+    src, dst, cp,
+    srcName: srcCity.name,
+    dstName: dstCity.name,
+    type:  type.name,
+    color: type.color,
+    progress: 0,
+    duration,
+    elapsed:  0,
+  });
+
+  // update stats
+  totalAttacks++;
+  timestamps.push(Date.now());
+  hitCounts[dstCity.name]++;
+
+  // live feed
+  addFeedItem(type, srcCity.name, dstCity.name);
+
+  // update counters
+  document.getElementById('total-counter').textContent = totalAttacks;
+}
+
+/* ── 8. LIVE FEED ────────────────────────────────────────────────*/
+function addFeedItem(type, src, dst) {
+  const li = document.createElement('li');
+  li.style.borderColor = type.color;
+  li.style.color       = type.color;
+  li.textContent       = `${type.name}  ${src} → ${dst}`;
+  const list = document.getElementById('feed-list');
+  list.insertBefore(li, list.firstChild);
+  // keep max 9 items
+  while (list.children.length > 9) list.removeChild(list.lastChild);
+}
+
+/* ── 9. TOP TARGETS BAR CHART ────────────────────────────────────*/
+function updateTopTargets() {
+  const sorted = Object.entries(hitCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const max   = sorted[0]?.[1] || 1;
+  const el    = document.getElementById('top-targets');
+  el.innerHTML = '';
+
+  sorted.forEach(([city, count]) => {
+    const pct = (count / max * 100).toFixed(1);
+    el.insertAdjacentHTML('beforeend', `
+      <div class="bar-row">
+        <div class="bar-city" title="${city}">${city}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="bar-count">${count}</div>
+      </div>`);
+  });
+}
+
+/* ── 10. APM (attacks per minute, rolling 60s) ──────────────────*/
+function updateAPM() {
+  const now    = Date.now();
+  const cutoff = now - 60000;
+  // prune old timestamps
+  while (timestamps.length && timestamps[0] < cutoff) timestamps.shift();
+  document.getElementById('apm-counter').textContent = timestamps.length;
+}
+
+/* ── 11. MAIN ANIMATION LOOP ─────────────────────────────────────*/
+let lastTime = 0;
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(now - lastTime, 100); // cap at 100ms to handle tab hide
+  lastTime = now;
+
+  if (paused) {
+    // still redraw map so it doesn't go blank
+    drawMap();
+    return;
+  }
+
+  drawMap();
+
+  // update + draw arcs
+  for (let i = activeArcs.length - 1; i >= 0; i--) {
+    const arc = activeArcs[i];
+    arc.elapsed  += dt;
+    arc.progress  = Math.min(arc.elapsed / arc.duration, 1);
+    drawArc(arc);
+
+    if (arc.progress >= 1) {
+      // spawn ripple at destination
+      ripples.push({
+        x: arc.dst.x,
+        y: arc.dst.y,
+        color: arc.color,
+        progress: 0,
+      });
+      activeArcs.splice(i, 1);
+    }
+  }
+
+  // update + draw ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i];
+    r.progress += dt / 700; // ripple lasts 700ms
+    drawRipple(r);
+    if (r.progress >= 1) ripples.splice(i, 1);
+  }
+}
+
+requestAnimationFrame(t => { lastTime = t; requestAnimationFrame(loop); });
+
+/* ── 12. SPAWN SCHEDULER ─────────────────────────────────────────
+   Converts speedLevel (1-10) to a mean interval in ms.
+   Level 1 → ~3000ms, Level 10 → ~300ms.
+   ──────────────────────────────────────────────────────────────── */
+let spawnTimer = null;
+
+function scheduleSpawn() {
+  clearTimeout(spawnTimer);
+  if (paused) return;
+  // exponential mapping: level 5 → ~900ms
+  const meanMs = 3000 / Math.pow(speedLevel, 0.9);
+  // add slight jitter ±30%
+  const jitter = meanMs * (0.7 + Math.random() * 0.6);
+  spawnTimer = setTimeout(() => {
+    spawn();
+    scheduleSpawn();
+  }, jitter);
+}
+
+scheduleSpawn();
+
+/* ── 13. CONTROLS ────────────────────────────────────────────────*/
+const btnPause = document.getElementById('btn-pause');
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
+  if (!paused) scheduleSpawn();
+  else clearTimeout(spawnTimer);
+});
+
+const speedSlider = document.getElementById('speed-slider');
+const speedVal    = document.getElementById('speed-val');
+speedSlider.addEventListener('input', () => {
+  speedLevel = +speedSlider.value;
+  speedVal.textContent = speedLevel;
+  scheduleSpawn(); // restart scheduler with new interval
+});
+
+/* ── 14. TYPE FILTER CHIPS ───────────────────────────────────────*/
+const chipsEl = document.getElementById('chips');
+ATTACK_TYPES.forEach(type => {
+  const chip = document.createElement('div');
+  chip.className   = 'chip';
+  chip.textContent = type.name;
+  chip.style.color       = type.color;
+  chip.style.borderColor = type.color;
+  chip.style.background  = type.color + '18';
+
+  chip.addEventListener('click', () => {
+    if (enabledTypes.has(type.name)) {
+      enabledTypes.delete(type.name);
+      chip.classList.add('off');
+    } else {
+      enabledTypes.add(type.name);
+      chip.classList.remove('off');
+    }
+  });
+
+  chipsEl.appendChild(chip);
+});
+
+/* ── 15. PERIODIC UI UPDATES ─────────────────────────────────────*/
+setInterval(() => {
+  updateTopTargets();
+  updateAPM();
+}, 1000);
+
+/* ── 16. RESIZE: re-project active arcs when canvas resizes ──────
+   Canvas resize fires resizeCanvas() which updates cw/ch.
+   We also need to refresh the projected coordinates for in-flight
+   arcs so they don't land in the wrong place after resize.
+   ──────────────────────────────────────────────────────────────── */
+window.addEventListener('resize', () => {
+  // active arcs store src/dst/cp as pixel coords; rebuild them
+  activeArcs.forEach(arc => {
+    const srcCity = CITIES.find(c => {
+      const p = project(c.lon, c.lat);
+      return Math.abs(p.x - arc.src.x) < 5 && Math.abs(p.y - arc.src.y) < 5;
+    });
+    const dstCity = CITIES.find(c => c.name === arc.dstName);
+    if (srcCity && dstCity) {
+      arc.src = project(srcCity.lon, srcCity.lat);
+      arc.dst = project(dstCity.lon, dstCity.lat);
+      arc.cp  = controlPoint(arc.src, arc.dst);
+    }
+  });
+});
+</script>
+</body>
+</html>
